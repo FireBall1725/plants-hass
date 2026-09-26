@@ -12,27 +12,49 @@ from homeassistant.util import dt as dt_util
 
 from .const import HISTORY_TTL
 
-# {(entity ids, hours): (fetched monotonic, start, {entity_id: series})}
-_cache: dict[tuple[tuple[str, ...], int], tuple[float, datetime, dict[str, list]]] = {}
+# {(entity ids, count, period, stat): (fetched monotonic, start, {entity_id: series})}
+_cache: dict[
+    tuple[tuple[str, ...], int, str, str], tuple[float, datetime, dict[str, list]]
+] = {}
+
+_STEP = {"hour": timedelta(hours=1), "day": timedelta(days=1)}
 
 
 def _recorder_ready(hass: HomeAssistant) -> bool:
     return "recorder" in hass.config.components
 
 
+def _window(count: int, period: str) -> tuple[datetime, datetime]:
+    """The last `count` complete periods: whole hours, or whole local days."""
+    if period == "day":
+        end = dt_util.as_utc(dt_util.start_of_local_day())
+    else:
+        end = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    return end - _STEP[period] * count, end
+
+
 async def async_hourly_means(
     hass: HomeAssistant, entity_ids: list[str], hours: int
 ) -> tuple[datetime, dict[str, list[float | None]]]:
-    """Hourly mean per entity for the last `hours` complete hours.
+    """Hourly mean per entity for the last `hours` complete hours."""
+    return await async_statistics(hass, entity_ids, hours)
 
-    Long-term statistics rather than raw history: one averaged row per hour, and
-    they outlive the recorder's purge window. Trailing empty hours (the one in
-    progress) are dropped so a curve ends on real data.
+
+async def async_statistics(
+    hass: HomeAssistant,
+    entity_ids: list[str],
+    count: int,
+    period: str = "hour",
+    stat: str = "mean",
+) -> tuple[datetime, dict[str, list[float | None]]]:
+    """One value per period per entity: the hourly mean, or a daily peak.
+
+    Long-term statistics rather than raw history: one row per period, and they
+    outlive the recorder's purge window. Trailing empty periods are dropped so a
+    curve ends on real data.
     """
-    start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(
-        hours=hours
-    )
-    key = (tuple(sorted(entity_ids)), hours)
+    start, end = _window(count, period)
+    key = (tuple(sorted(entity_ids)), count, period, stat)
     cached = _cache.get(key)
     if cached and cached[1] == start and time.monotonic() - cached[0] < HISTORY_TTL:
         return start, cached[2]
@@ -48,25 +70,27 @@ async def async_hourly_means(
             statistics_during_period,
             hass,
             start,
-            None,
+            end,
             set(entity_ids),
-            "hour",
+            period,
             None,
-            {"mean"},
+            {stat},
         )
         start_ts = start.timestamp()
+        step = _STEP[period].total_seconds()
         for entity_id in entity_ids:
-            series: list[float | None] = [None] * hours
+            series: list[float | None] = [None] * count
             for row in stats.get(entity_id, []):
                 row_start = row.get("start")
                 if isinstance(row_start, datetime):
                     row_start = row_start.timestamp()
-                mean = row.get("mean")
-                if row_start is None or mean is None:
+                value = row.get(stat)
+                if row_start is None or value is None:
                     continue
-                i = int((row_start - start_ts) // 3600)
-                if 0 <= i < hours:
-                    series[i] = round(mean, 1)
+                # Rounded, not floored: a local day is 23 or 25 hours across DST.
+                i = round((row_start - start_ts) / step)
+                if 0 <= i < count:
+                    series[i] = round(float(value), 1)  # type: ignore[arg-type]
             while series and series[-1] is None:
                 series.pop()
             result[entity_id] = series

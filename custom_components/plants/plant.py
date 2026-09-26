@@ -64,7 +64,7 @@ from .const import (
     icon_for,
 )
 from .detector import WateringDetector
-from .history import async_hourly_means, async_recent_states
+from .history import async_hourly_means, async_recent_states, async_statistics
 from .icon import display_mask
 
 _LOGGER = logging.getLogger(__name__)
@@ -389,13 +389,17 @@ class Plant:
         }
 
     async def async_history(
-        self, hours: int = HISTORY_HOURS
+        self,
+        reading: str = CONF_MOISTURE,
+        count: int = HISTORY_HOURS,
+        period: str = "hour",
+        stat: str = "mean",
     ) -> tuple[datetime, list[float | None]]:
-        moisture = self.sources.get(CONF_MOISTURE)
-        start, series = await async_hourly_means(
-            self.hass, [moisture] if moisture else [], hours
+        entity_id = self.sources.get(reading)
+        start, series = await async_statistics(
+            self.hass, [entity_id] if entity_id else [], count, period, stat
         )
-        return start, series.get(moisture, []) if moisture else []
+        return start, series.get(entity_id, []) if entity_id else []
 
     # ---------- plumbing ----------
 

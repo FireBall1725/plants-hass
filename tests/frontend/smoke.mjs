@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 FireBall1725
-// Renders both cards against a stubbed DOM and fake plants/list + plants/history,
+// Renders every card against a stubbed DOM and fake plants/list + plants/history,
 // and checks each card has the blocks that make it that card (node --check won't
 // catch a ReferenceError or a typo in a template).
 import assert from "node:assert/strict";
@@ -39,8 +39,13 @@ const plants = [
     readings: { moisture: r(0), temperature: r(20.9), illuminance: r(400), conductivity: r(0), battery: r(98) } },
 ];
 const series = Array.from({ length: 168 }, (_, i) => (i % 40 === 7 ? null : 12 - i * 0.05));
+// Daily light peaks: day 6 is dark for everyone, which the card should mark.
+const peaks = (base) => Array.from({ length: 10 }, (_, i) => (i === 6 ? base * 0.3 : base));
+let light = { a: peaks(9700), b: [], c: peaks(9900) };
 const hass = { states: {}, callWS: async (m) =>
-  m.type === "plants/list" ? plants : { start: iso(-168), series: { a: series, b: series, c: series.map(() => 0) } } };
+  m.type === "plants/list" ? plants
+    : m.reading === "illuminance" ? { start: iso(-240), period: "day", series: light }
+    : { start: iso(-168), series: { a: series, b: series, c: series.map(() => 0) } } };
 
 await import("../../custom_components/plants/frontend/plants-card.js");
 const Plant = registry.get("plants-card"), Triage = registry.get("plants-triage-card");
@@ -51,12 +56,16 @@ for (const id of ["a", "b", "c"]) {
   const c = new Plant(); c.setConfig({ plant: id }); c.connectedCallback(); c.hass = hass; cards[id] = c;
 }
 const t = new Triage(); t.setConfig({}); t.connectedCallback(); t.hass = hass;
+const Light = registry.get("plants-light-card"), Battery = registry.get("plants-battery-card");
+assert.ok(Light && Battery, "light and battery cards defined");
+const l = new Light(); l.setConfig({}); l.connectedCallback(); l.hass = hass;
+const bt = new Battery(); bt.setConfig({}); bt.connectedCallback(); bt.hass = hass;
 await new Promise((res) => setTimeout(res, 20));
 
 const html = (c) => c.shadowRoot.innerHTML;
 for (const id of ["a", "b", "c"]) {
   const h = html(cards[id]);
-  for (const block of ["class=\"band", "class=\"notch", "class=\"chips", "class=\"bleedchart", "Floor "]) {
+  for (const block of ["class=\"band", "class=\"notch", "class=\"chips", "class=\"bleedchart", "class=\"pills", "Floor "]) {
     assert.ok(h.includes(block), `plant ${id} missing ${block}`);
   }
 }
@@ -71,6 +80,30 @@ for (const block of ["class=\"triage", "class=\"trow", "class=\"meter", "class=\
 }
 assert.ok(th.indexOf("Ginger") < th.indexOf("Basil") && th.indexOf("Basil") < th.indexOf("Jade"), "sorted by need");
 assert.ok(th.includes("2 below the floor"), "summary counts");
+
+l.render();
+const lh = html(l);
+for (const block of ["class=\"band", "class=\"bleedchart", "class=\"key", "peak lux per day"]) {
+  assert.ok(lh.includes(block), `light missing ${block}`);
+}
+assert.equal((lh.match(/<polyline/g) || []).length, 2, "one line per plant with history");
+assert.ok(lh.includes("dimmest day") && lh.includes("Dimmest"), "dark day marked");
+assert.ok(lh.includes("Jade 9.7k"), "key carries the latest peak");
+
+// A lasting drop (moved away from the window) is a step, not a dark day.
+const stepped = (base) => Array.from({ length: 10 }, (_, i) => (i >= 6 ? base * 0.05 : base));
+light = { a: stepped(9700), b: stepped(5000), c: stepped(9900) };
+const l2 = new Light(); l2.setConfig({ days: 9 }); l2.connectedCallback(); l2.hass = hass;
+await new Promise((res) => setTimeout(res, 20));
+l2.render();
+assert.ok(html(l2).includes("less light since") && !html(l2).includes("dimmest day"), "step reads as less light");
+const xs = [...html(l2).matchAll(/points="([^"]*)"/g)].flatMap((m) => m[1].trim().split(/\s+/).map((pt) => Number(pt.split(",")[0])));
+assert.ok(xs.length && xs.every((x) => x >= 0 && x <= 100), "no point past the right edge");
+const bh = html(bt);
+for (const block of ["class=\"bat\"", "class=\"batrow", "class=\"cell", "Last contact", "2 min ago", "lowest"]) {
+  assert.ok(bh.includes(block), `battery missing ${block}`);
+}
+assert.equal((bh.match(/class="batrow" data-entity/g) || []).length, 3, "a row per plant");
 
 // Custom icon on a plant that isn't in check_probe renders as a tinted mask.
 plants[2].status = "ok";
