@@ -73,6 +73,10 @@ jobs:
       - name: Generate release notes
         id: changelog
         uses: FireBall1725/workflows/actions/changelog@v1
+        # git-cliff looks each commit up for its PR title. The action reads the
+        # token from here; an empty one isn't skipped, it fails the run with a 401.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ steps.version.outputs.tag }}
           since: ${{ inputs.channel == 'stable' && steps.version.outputs.previous-stable-tag || '' }}
