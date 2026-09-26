@@ -733,11 +733,11 @@ class PlantsLightCard extends PlantsBase {
     });
     const drawn = series.some((s) => s.filter((v) => num(v) !== null).length > 1);
     const empty = drawn ? "" : `<div class="nodata">${hist ? "No light history yet" : "Loading history"}</div>`;
-    // Anchored to whichever side keeps it inside the card.
+    // At the top, since the lines are low on the day it marks; on whichever side keeps it inside the card.
     const dimPos = dim < 0 ? "" : Number(x(dim)) > 80 ? `right:calc(${(100 - Number(x(dim))).toFixed(2)}% + 6px)`
       : Number(x(dim)) < 20 ? `left:calc(${x(dim)}% + 6px)` : `left:calc(${x(dim)}% - 22px)`;
     const dimLab = dim >= 0
-      ? `<span class="lab" style="${dimPos};bottom:8px;color:${HUE.dim}">${step ? "Less light" : "Dimmest"}</span>`
+      ? `<span class="lab" style="${dimPos};top:8px;color:${HUE.dim}">${step ? "Less light" : "Dimmest"}</span>`
       : "";
 
     const key = plants.map((p, k) => {
