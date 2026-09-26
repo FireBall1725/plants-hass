@@ -4,6 +4,8 @@ A Home Assistant integration that turns a soil sensor into a plant: one device p
 
 Before this, a plant was a pile of helpers: a smoothing filter, a statistics window, a floor and ceiling, a last-watered date and button, a few template sensors, and a branch of an automation. Plants replaces all of that with one config entry per plant, made by picking the sensor device.
 
+![The Plants dashboard: a watering list sorted by need, daily light and battery for every sensor, and a card per plant with its moisture curve](docs/screenshots/dashboard.png)
+
 ## Install
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=FireBall1725&repository=plants-hass&category=integration)
@@ -11,6 +13,8 @@ Before this, a plant was a pile of helpers: a smoothing filter, a statistics win
 Add this repository to HACS as a custom repository of type Integration, install it, and restart Home Assistant. Then go to Settings, Devices and services, Add integration, and pick Plants.
 
 ## Adding a plant
+
+<img src="docs/screenshots/add-plant.png" width="430" alt="The Add a plant dialog: sensor device, name, species, profile and icon, with an upload box for your own icon">
 
 Pick the plant's sensor device (a Mi Flora or anything else with a soil moisture sensor). Plants finds the moisture, temperature, light, conductivity and battery sensors on that device by their device class, so there's nothing to map by hand.
 
@@ -25,7 +29,13 @@ Then choose a profile. It sets the starting moisture band and how big a rise cou
 
 The floor and ceiling are number entities on the plant, so you can move them from the dashboard later. Everything else is under Configure.
 
+Each plant is its own device under the integration:
+
+<img src="docs/screenshots/integration.png" width="658" alt="The Plants integration page listing three plant devices, Basil, Ginger and Jade">
+
 ## What each plant gets
+
+<img src="docs/screenshots/device.png" width="700" alt="A plant's device page: moisture floor and ceiling, a Watered button, last watered, trend, needs water, reaches floor and status, and an activity log">
 
 - `sensor.<plant>_status`: ok, water soon, dry, stale (no reading for two hours) or check probe (the probe reads zero, which a probe in soil doesn't do)
 - `sensor.<plant>_last_watered`, with the pending watering as attributes while it's being confirmed
@@ -51,6 +61,8 @@ The cards ship with the integration and load by themselves, so there's no resour
 
 One plant: the moisture reading, its trend, and a seven-day curve with the floor drawn in.
 
+<img src="docs/screenshots/plant.png" width="492" alt="A plant card for Basil at 22 percent, below its 25 percent floor, with its seven-day moisture curve">
+
 ```yaml
 type: custom:plants-card
 plant: Jade
@@ -60,9 +72,13 @@ plant: Jade
 
 Every plant, sorted by who needs water first, each against its own floor:
 
+<img src="docs/screenshots/watering.png" width="493" alt="The watering card: Basil below its floor and marked water now, Ginger and Jade OK">
+
 ```yaml
 type: custom:plants-triage-card
 ```
+
+<img src="docs/screenshots/light.png" width="492" alt="The light card: three plants' daily peak light falling together, marked less light since 22 September">
 
 Daily peak light for every plant over the last ten days, one line each. Sensors on the same windowsill should trace each other, so a line that wanders off on its own points at the sensor, not the room. When every plant drops at once and stays down, the card marks the day it started; that usually means the plants moved or something now shades them.
 
@@ -70,6 +86,8 @@ Daily peak light for every plant over the last ten days, one line each. Sensors 
 type: custom:plants-light-card
 days: 10
 ```
+
+<img src="docs/screenshots/battery.png" width="493" alt="The battery card: three sensors at 98 percent, all reporting just now">
 
 Every sensor's battery beside the last time it reported anything. Battery values change rarely, so the last-contact time is the one that tells you a sensor has gone quiet.
 
