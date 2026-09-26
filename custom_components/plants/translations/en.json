@@ -1,0 +1,125 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a plant",
+        "description": "Pick the plant's sensor device. Its moisture, temperature, light, fertility and battery sensors are found automatically. The profile sets the starting moisture band, which you can tune afterwards.",
+        "data": {
+          "device_id": "Sensor device",
+          "name": "Name (blank uses the device name)",
+          "species": "Species",
+          "profile": "Profile",
+          "icon": "Icon",
+          "icon_file": "Upload an icon"
+        },
+        "data_description": {
+          "icon": "Leave blank to pick one from the profile, or upload your own below.",
+          "icon_file": "A PNG with a transparent background works best. A drawing on a plain background works too; it's turned into a single-colour mark."
+        }
+      }
+    },
+    "error": {
+      "no_moisture": "That device has no moisture sensor.",
+      "icon_file_required": "Upload an image to use a custom icon.",
+      "icon_unreadable": "That file isn't an image this can read. Try a PNG or JPEG.",
+      "icon_empty": "Couldn't find a shape in that image. Try one with a transparent or plain background.",
+      "icon_too_big": "That image is too large. Keep it under 4096 pixels on each side."
+    },
+    "abort": {
+      "already_configured": "That sensor already belongs to a plant."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Plant options",
+        "description": "The moisture floor and ceiling are number entities on the plant's device. The detection threshold is how many points a watering must add and hold for six hours; the morning dew adds two or three.",
+        "data": {
+          "name": "Name",
+          "species": "Species",
+          "profile": "Profile",
+          "threshold": "Watering detection threshold",
+          "moisture": "Moisture",
+          "temperature": "Temperature",
+          "illuminance": "Light",
+          "conductivity": "Fertility (conductivity)",
+          "battery": "Battery",
+          "icon": "Icon",
+          "icon_file": "Upload an icon"
+        },
+        "data_description": {
+          "icon_file": "A PNG with a transparent background works best. A drawing on a plain background works too; it's turned into a single-colour mark."
+        }
+      }
+    },
+    "error": {
+      "icon_file_required": "Upload an image to use a custom icon.",
+      "icon_unreadable": "That file isn't an image this can read. Try a PNG or JPEG.",
+      "icon_empty": "Couldn't find a shape in that image. Try one with a transparent or plain background.",
+      "icon_too_big": "That image is too large. Keep it under 4096 pixels on each side."
+    }
+  },
+  "selector": {
+    "profile": {
+      "options": {
+        "succulent": "Succulent (8-30%)",
+        "herb": "Herb (25-60%)",
+        "tropical": "Tropical (20-50%)",
+        "custom": "Custom (15-60%)"
+      }
+    },
+    "icon": {
+      "options": {
+        "succulent": "Succulent",
+        "herb": "Herb",
+        "seedling": "Seedling",
+        "cactus": "Cactus",
+        "fern": "Fern",
+        "flowering": "Flowering",
+        "tropical": "Tropical leaf",
+        "custom": "Custom (upload an image)"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "ok": "OK",
+          "water_soon": "Water soon",
+          "dry": "Dry",
+          "stale": "Not reporting",
+          "check_probe": "Check probe"
+        }
+      },
+      "last_watered": {
+        "name": "Last watered"
+      },
+      "moisture_trend": {
+        "name": "Moisture trend"
+      },
+      "floor_forecast": {
+        "name": "Reaches floor"
+      }
+    },
+    "binary_sensor": {
+      "needs_water": {
+        "name": "Needs water"
+      }
+    },
+    "number": {
+      "moisture_floor": {
+        "name": "Moisture floor"
+      },
+      "moisture_ceiling": {
+        "name": "Moisture ceiling"
+      }
+    },
+    "button": {
+      "watered": {
+        "name": "Watered"
+      }
+    }
+  }
+}

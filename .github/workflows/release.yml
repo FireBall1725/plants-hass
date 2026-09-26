@@ -1,0 +1,109 @@
+name: Release
+
+# YY.M.revision, computed by the shared action from the tag list. Nobody
+# hand-edits a version.
+#
+# A custom integration has no build step to inject a version into, so the
+# number has to be written into custom_components/plants/manifest.json and
+# committed before the tag is cut: HACS reads the manifest at the tag, and
+# will install whatever it finds there. The committed placeholder is 0.0.0,
+# which sorts below every real release and passes hassfest. `26.8.DEV` does
+# not: hassfest validates the manifest version against CalVer, SemVer,
+# SimpleVer, BuildVer and PEP440, and a bare DEV segment matches none of them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: rc or stable
+        required: true
+        type: choice
+        options: [rc, stable]
+        default: rc
+      force-version:
+        description: Exact version to re-cut, no leading v. Leave empty to compute.
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 or compute-version cannot see the tag list and every
+      # release computes as revision 0.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This job pushes to main. Dispatched from any other ref it would push
+      # that ref's tree there instead, so refuse rather than find out later.
+      - name: Refuse to release from anywhere but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Release must be dispatched from main (got ${{ github.ref }})"
+          exit 1
+
+      - name: Compute version
+        id: version
+        uses: FireBall1725/workflows/actions/compute-version@v1
+        with:
+          channel: ${{ inputs.channel }}
+          force-version: ${{ inputs.force-version }}
+
+      - name: Write the version into the manifest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          path = pathlib.Path("custom_components/plants/manifest.json")
+          manifest = json.loads(path.read_text())
+          manifest["version"] = os.environ["VERSION"]
+          path.write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+          git diff --stat
+
+      - name: Generate release notes
+        id: changelog
+        uses: FireBall1725/workflows/actions/changelog@v1
+        with:
+          tag: ${{ steps.version.outputs.tag }}
+          since: ${{ inputs.channel == 'stable' && steps.version.outputs.previous-stable-tag || '' }}
+
+      - name: Commit and tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/plants/manifest.json
+          git commit -m "manifest: version ${VERSION}"
+          git push origin HEAD:main
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          NOTES: ${{ steps.changelog.outputs.content }}
+          PRERELEASE: ${{ steps.version.outputs.is-prerelease }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "$NOTES" \
+            "${args[@]}"

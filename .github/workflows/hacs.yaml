@@ -1,0 +1,22 @@
+name: HACS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # The brands check wants an icon in home-assistant/brands or a
+          # brand/ directory here. Neither exists yet, and it only gates
+          # submission to the HACS default list; installing this as a custom
+          # repository does not care. Drop this line once there is a logo.
+          ignore: brands
