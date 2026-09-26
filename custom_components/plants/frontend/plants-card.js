@@ -4,6 +4,8 @@
 // Lovelace cards for the plants integration, ported from "The Watering Clock" mockup:
 //   custom:plants-card         one plant: hero moisture, trend, pills, 7-day curve
 //   custom:plants-triage-card  every plant, sorted by need, with each plant's floor
+//   custom:plants-light-card   daily peak light per plant, so the sensors check each other
+//   custom:plants-battery-card every sensor's charge beside when it last reported
 // Data comes from the integration's websocket API (plants/list, plants/history),
 // shared by every card on the page.
 
@@ -22,6 +24,11 @@ const MARKS = {
 const PROBE_MARK = `<path d='M12 21v-7'/><path d='M12 14c-3 0-5.4-2.2-5.8-5C9.4 9.3 12 11 12 14Z'/><path d='M12 12c.4-2.7 2.8-4.7 5.8-4.7C17.4 10 15 12 12 12Z'/><path d='M4.5 4.5l15 15'/>`;
 const ALERT_MARK = `<path d='M12 3.5 3 20h18L12 3.5Z'/><path d='M12 10v4.5'/><circle cx='12' cy='17.3' r='.9' fill='currentColor' stroke='none'/>`;
 const CHECK_MARK = `<path d='M4 13l5 5L20 6'/>`;
+const SUN_MARK = `<circle cx='12' cy='12' r='4.4'/><path d='M12 2v2.6M12 19.4V22M2 12h2.6M19.4 12H22M4.9 4.9l1.9 1.9M17.2 17.2l1.9 1.9M19.1 4.9l-1.9 1.9M6.8 17.2l-1.9 1.9'/>`;
+const BATTERY_MARK = `<rect x='2.5' y='7' width='16' height='10' rx='2'/><path d='M21 10.5v3'/><rect x='4.5' y='9' width='11' height='6' rx='1' fill='currentColor' stroke='none'/>`;
+
+// One line per plant on the light chart, in this order.
+const SERIES = ["#dfae3c", "rgba(231,233,236,.55)", "#58a05c", "#4f8ad6", "#e07a45", "#b07cd6", "#4fb3b3"];
 
 const HUE = {
   moist: "#4f8ad6", fert: "#58a05c", light: "#dfae3c", bad: "#c8503f",
@@ -65,7 +72,10 @@ const STYLE = `
   .band + * { padding-top: 13px; }
   .band + .bleedchart { padding-top: 0; }
 
-  .reading { display: flex; align-items: flex-end; gap: 18px; padding: 2px 16px 10px 80px; }
+  /* Every plant card is the same height whatever its state, so a row of them lines up:
+     the reading and its failed-probe stand-in share one height, and the pills row is
+     always one line. */
+  .reading { display: flex; align-items: flex-end; gap: 18px; padding: 2px 16px 10px 80px; height: 76px; }
   .reading .big { font-family: var(--hacond); font-size: 66px; font-weight: 700; line-height: .86;
     letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
   .reading .big sup { font-size: 22px; font-weight: 700; vertical-align: top; margin-left: 2px; }
@@ -73,15 +83,16 @@ const STYLE = `
   .reading .aside div { font-size: 12.5px; color: var(--dim); line-height: 1.5; }
   .reading .aside b { color: var(--ink); font-weight: 500; }
 
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; }
+  .pills { display: flex; gap: 6px; padding: 0 16px 12px; overflow: hidden; }
   .pill { font-size: 10.5px; letter-spacing: .04em; color: var(--dim); background: var(--inset);
     border-radius: 5px; padding: 3px 8px; white-space: nowrap; }
   .pill.bad  { background: rgba(200,80,63,.18);  color: #eb9184; }
   .pill.warn { background: rgba(217,139,57,.18); color: #e9b276; }
   .pill.good { background: rgba(88,160,92,.18);  color: #8cc08f; }
 
-  .empty { padding: 18px 16px 22px; text-align: center; }
-  .empty b { display: block; font-family: var(--hacond); font-size: 30px; font-weight: 700; }
+  .empty { padding: 4px 16px 8px; text-align: center; }
+  .empty b { display: block; font-family: var(--hacond); font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .empty.hero { height: 76px; display: grid; align-content: center; }
   .empty span { font-size: 12.5px; color: var(--dim); }
 
   .bleedchart { position: relative; }
@@ -119,6 +130,26 @@ const STYLE = `
   .key span { display: flex; align-items: center; gap: 6px; }
   .key u { width: 16px; height: 7px; border-radius: 3px; text-decoration: none; }
   .key em { width: 2px; height: 12px; font-style: normal; background: var(--dim); }
+
+  .bat { padding: 2px 16px 12px; display: grid; gap: 2px; }
+  .batrow { display: grid; grid-template-columns: 70px 1fr 46px 84px; gap: 10px;
+    align-items: center; padding: 6px 0; }
+  .batrow .who { font-size: 13px; color: var(--ink); font-weight: 500; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .batrow .cell { position: relative; height: 12px; border-radius: 3px; background: var(--inset);
+    border: 1px solid var(--hair); }
+  .batrow .cell u { position: absolute; top: 1px; bottom: 1px; left: 1px; border-radius: 2px;
+    text-decoration: none; }
+  .batrow .cell::after { content: ""; position: absolute; right: -4px; top: 3px; width: 3px; height: 6px;
+    border-radius: 0 2px 2px 0; background: var(--hair); }
+  .batrow .pc { font-family: var(--hacond); font-size: 15px; font-weight: 700; text-align: right;
+    font-variant-numeric: tabular-nums; }
+  .batrow .seen { font-size: 10px; color: var(--dimmer); text-align: right; letter-spacing: .04em;
+    white-space: nowrap; }
+  .batrow[data-entity] { cursor: pointer; }
+  .bathead { padding-bottom: 2px; }
+  .bathead span { font-size: 8.5px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase;
+    color: var(--dimmer); text-align: right; }
 
   .msg { padding: 18px 16px; font-size: 13px; color: var(--dim); }
   .clickable { cursor: pointer; }
@@ -186,6 +217,23 @@ async function fetchHistory() {
   return store.historying;
 }
 
+// Other curves (daily light peaks), one cache entry per query.
+const extra = new Map(); // key -> { at, data, pending }
+
+function fetchSeries(query) {
+  const key = JSON.stringify(query);
+  const hit = extra.get(key);
+  if (!store.hass || (hit && (hit.pending || Date.now() - hit.at < HISTORY_TTL_MS))) return hit ? hit.data : null;
+  const entry = { at: hit ? hit.at : 0, data: hit ? hit.data : null, pending: true };
+  extra.set(key, entry);
+  store.hass
+    .callWS({ type: "plants/history", ...query })
+    .then((h) => { entry.data = h; entry.at = Date.now(); notify(); })
+    .catch(() => { entry.at = Date.now(); })
+    .finally(() => { entry.pending = false; });
+  return entry.data;
+}
+
 // Called from every card's hass setter: refetch when any plant's reading changed.
 function feed(hass) {
   store.hass = hass;
@@ -227,6 +275,19 @@ function ago(iso) {
   if (s < 5400) return `${Math.round(s / 60)} min ago`;
   if (s < 36 * 3600) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} days ago`;
+}
+
+function agoSecs(s) {
+  if (s === null) return null;
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)} min ago`;
+  if (s < 36 * 3600) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec"];
+function dayLabel(d) {
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
 function until(iso) {
@@ -318,7 +379,13 @@ function pills(p) {
   if (p.status === "check_probe") out.push(["bad", "No soil reading: check the probe"]);
   if (p.status === "stale") out.push(["warn", m.age !== null ? `No reading for ${Math.round(m.age / 3600)} h` : "No recent reading"]);
   if (p.watering_pending) out.push(["good", "Watering detected"]);
-  if (!out.length) return "";
+  if (p.status === "ok") {
+    const w = until(p.forecast);
+    out.push(["good", "In range"]);
+    if (w) out.push(["", `Reaches floor ${w}`]);
+  }
+  // Never empty, so every plant card keeps the same height.
+  if (!out.length) out.push(["", `Floor ${fmt(p.floor)}%, target to ${fmt(p.ceiling)}%`]);
   return `<div class="pills">${out.map(([k, t]) => `<span class="pill ${k}">${esc(t)}</span>`).join("")}</div>`;
 }
 
@@ -474,7 +541,7 @@ class PlantsCard extends PlantsBase {
       </div></div>`;
 
     const hero = probe
-      ? `<div class="empty"><b style="color:var(--bad)">${fmt(moist.value)}<span style="font-size:20px">%</span></b>
+      ? `<div class="empty hero"><b style="color:var(--bad)">${fmt(moist.value)}<span style="font-size:20px">%</span></b>
           <span>Soil moisture reads zero, which a probe in soil never does</span></div>`
       : `<div class="reading">
           <div class="big" style="color:${statusHue(p)}">${fmt(moist.value)}<sup>%</sup></div>
@@ -580,6 +647,197 @@ class PlantsTriageCard extends PlantsBase {
   }
 }
 
+// ---------- light ----------
+
+function median(values) {
+  const v = [...values].sort((a, b) => a - b);
+  return v.length ? v[Math.floor(v.length / 2)] : null;
+}
+
+class PlantsLightCard extends PlantsBase {
+  static getStubConfig() {
+    return {};
+  }
+
+  getCardSize() {
+    return 4;
+  }
+
+  getGridOptions() {
+    return { columns: 6, min_columns: 6, rows: "auto" };
+  }
+
+  render() {
+    if (!this._config) return;
+    if (store.error && !store.plants) return this.message(`Plants integration: ${store.error}`);
+    if (!store.plants) return this.message("Loading…");
+    const days = Math.max(3, Math.min(90, Number(this._config.days) || 10));
+    const plants = store.plants.filter((p) => reading(p, "illuminance").entity);
+    if (!plants.length) return this.message("No plant has a light sensor.");
+    const hist = fetchSeries({ reading: "illuminance", period: "day", stat: "max", days });
+    const series = plants.map((p) => {
+      const s = hist && hist.series ? hist.series[p.entry_id] : null;
+      return Array.isArray(s) ? s.slice(-days) : [];
+    });
+
+    // The dimmest day is the one every sensor agrees was dark, by the plants' mean peak.
+    const means = [];
+    for (let i = 0; i < days; i++) {
+      const v = series.map((s) => num(s[i])).filter((x) => x !== null);
+      means.push(v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
+    }
+    const known = means.filter((m) => m !== null);
+    // Two things worth marking. A step: every day from some point on is under 60% of
+    // a typical day before it, which means the plants moved or something now shades
+    // them. Otherwise one dark day, when exactly one stands out that way.
+    let dim = -1;
+    let step = false;
+    for (let k = 2; k <= days - 2 && !step; k++) {
+      const before = means.slice(0, k).filter((m) => m !== null);
+      const after = means.slice(k).filter((m) => m !== null);
+      if (before.length < 2 || after.length < 2) continue;
+      const typical = median(before);
+      if (after.every((m) => m <= 0.6 * typical)) {
+        dim = means.findIndex((m, i) => i >= k && m !== null);
+        step = true;
+      }
+    }
+    if (!step && known.length >= 3) {
+      const typical = median(known);
+      const low = known.filter((m) => m <= 0.6 * typical);
+      if (low.length === 1) dim = means.indexOf(low[0]);
+    }
+    const start = hist && hist.start ? new Date(hist.start) : null;
+    const dimDate = start && dim >= 0 ? new Date(start.getTime() + (dim + 0.5) * 86400e3) : null;
+
+    const quiet = plants.filter((p) => p.status === "stale").length;
+    const subtitle = quiet
+      ? `${quiet} of ${plants.length} sensors not reporting`
+      : plants.length === 1 ? "One sensor reporting" : `All ${plants.length} sensors reporting`;
+
+    const top = Math.max(1, ...series.flat().filter((v) => num(v) !== null)) * 1.12;
+    const x = (i) => (days > 1 ? (i / (days - 1)) * 100 : 50).toFixed(2);
+    const y = (v) => (100 - (v / top) * 100).toFixed(1);
+    let body = "";
+    if (dim >= 0) {
+      body += `<line x1="${x(dim)}" y1="0" x2="${x(dim)}" y2="100" stroke="${HUE.dim}" stroke-width=".7"
+        stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity=".5"/>`;
+    }
+    series.forEach((s, k) => {
+      const pts = [];
+      s.forEach((v, i) => { if (num(v) !== null) pts.push(`${x(i)},${y(v)}`); });
+      if (pts.length > 1) {
+        body += `<polyline fill="none" stroke="${SERIES[k % SERIES.length]}" stroke-width="1.5"
+          vector-effect="non-scaling-stroke" stroke-linejoin="round" points="${pts.join(" ")}"/>`;
+      }
+    });
+    const drawn = series.some((s) => s.filter((v) => num(v) !== null).length > 1);
+    const empty = drawn ? "" : `<div class="nodata">${hist ? "No light history yet" : "Loading history"}</div>`;
+    // Anchored to whichever side keeps it inside the card.
+    const dimPos = dim < 0 ? "" : Number(x(dim)) > 80 ? `right:calc(${(100 - Number(x(dim))).toFixed(2)}% + 6px)`
+      : Number(x(dim)) < 20 ? `left:calc(${x(dim)}% + 6px)` : `left:calc(${x(dim)}% - 22px)`;
+    const dimLab = dim >= 0
+      ? `<span class="lab" style="${dimPos};bottom:8px;color:${HUE.dim}">${step ? "Less light" : "Dimmest"}</span>`
+      : "";
+
+    const key = plants.map((p, k) => {
+      const s = series[k];
+      const last = [...s].reverse().find((v) => num(v) !== null);
+      const peak = last !== undefined ? ` ${last >= 1000 ? `${(last / 1000).toFixed(1)}k` : Math.round(last)}` : "";
+      return `<span><u style="background:${SERIES[k % SERIES.length]}"></u>${esc(p.name)}${peak}</span>`;
+    }).join("");
+
+    this.paint(`<div class="hacard">
+      <div class="band">
+        ${notch(HUE.light, svg(SUN_MARK, HUE.light))}
+        <div class="ident"><b>${esc(this._config.title || "Light")}</b><span>${esc(subtitle)}</span></div>
+        <div class="chips">${dimDate ? chip(step ? "less light since" : "dimmest day", esc(dayLabel(dimDate)), "", step ? "var(--warn)" : null)
+          : drawn ? chip("top peak", esc(lux(top / 1.12))) : ""}</div>
+      </div>
+      <div class="bleedchart" style="height:132px">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Daily peak light per plant over the last ${days} days">${body}</svg>
+        ${dimLab}${empty}
+      </div>
+      <div class="key">${key}<span style="margin-left:auto;color:var(--dimmer)">peak lux per day</span></div>
+    </div>`);
+  }
+}
+
+// ---------- battery ----------
+
+function batteryHue(v) {
+  if (v === null) return HUE.dim;
+  if (v < 15) return HUE.bad;
+  if (v < 30) return HUE.warn;
+  return HUE.ok;
+}
+
+// The live signal: the newest report from any of the plant's readings.
+function lastContact(p) {
+  const ages = Object.values(p.readings || {}).map((r) => num(r.age)).filter((a) => a !== null);
+  return ages.length ? Math.min(...ages) : null;
+}
+
+class PlantsBatteryCard extends PlantsBase {
+  static getStubConfig() {
+    return {};
+  }
+
+  getCardSize() {
+    return 3;
+  }
+
+  getGridOptions() {
+    return { columns: 6, min_columns: 6, rows: "auto" };
+  }
+
+  render() {
+    if (!this._config) return;
+    if (store.error && !store.plants) return this.message(`Plants integration: ${store.error}`);
+    if (!store.plants) return this.message("Loading…");
+    const plants = store.plants
+      .filter((p) => reading(p, "battery").entity)
+      .sort((a, b) => (reading(a, "battery").value ?? 101) - (reading(b, "battery").value ?? 101));
+    if (!plants.length) return this.message("No plant has a battery sensor.");
+
+    const levels = plants.map((p) => reading(p, "battery").value).filter((v) => v !== null);
+    const lo = levels.length ? Math.min(...levels) : null;
+    const hi = levels.length ? Math.max(...levels) : null;
+    const hue = batteryHue(lo);
+    const quiet = plants.filter((p) => (lastContact(p) ?? Infinity) > 2 * 3600).length;
+    const range = lo === null ? "No charge reported" : lo === hi ? `All at ${fmt(lo)}%` : `${fmt(lo)}–${fmt(hi)}%`;
+    const count = plants.length === 1 ? "one sensor" : `${plants.length} sensors`;
+    const subtitle = `${range} · ${quiet ? `${quiet} quiet over 2 h` : count}`;
+
+    const rows = plants.map((p) => {
+      const b = reading(p, "battery");
+      const c = batteryHue(b.value);
+      const seen = lastContact(p);
+      const late = (seen ?? Infinity) > 2 * 3600;
+      const width = b.value === null ? 0 : Math.max(0, Math.min(100, b.value));
+      return `<div class="batrow" data-entity="${esc(b.entity || "")}">
+        <span class="who">${esc(p.name)}</span>
+        <span class="cell"><u style="width:calc(${width.toFixed(0)}% - 2px);background:${c}"></u></span>
+        <span class="pc" style="color:${c}">${fmt(b.value)}%</span>
+        <span class="seen"${late ? ` style="color:var(--warn)"` : ""}>${esc(agoSecs(seen) || "never")}</span></div>`;
+    }).join("");
+
+    this.paint(`<div class="hacard">
+      <div class="band">
+        ${notch(hue, svg(BATTERY_MARK, hue))}
+        <div class="ident"><b>${esc(this._config.title || "Battery")}</b><span>${esc(subtitle)}</span></div>
+        <div class="chips">${chip("lowest", fmt(lo), "%", lo === null ? null : hue)}</div>
+      </div>
+      <div class="bat">
+        <div class="batrow bathead"><span></span><span></span><span>Charge</span><span>Last contact</span></div>
+        ${rows}
+      </div></div>`);
+    for (const r of this.shadowRoot.querySelectorAll(".batrow")) {
+      if (r.dataset.entity) r.addEventListener("click", () => moreInfo(this, r.dataset.entity));
+    }
+  }
+}
+
 // ---------- editor ----------
 
 class PlantsCardEditor extends HTMLElement {
@@ -626,12 +884,16 @@ const define = (name, cls) => {
 };
 define("plants-card", PlantsCard);
 define("plants-triage-card", PlantsTriageCard);
+define("plants-light-card", PlantsLightCard);
+define("plants-battery-card", PlantsBatteryCard);
 define("plants-card-editor", PlantsCardEditor);
 
 window.customCards = window.customCards || [];
 for (const c of [
   { type: "plants-card", name: "Plant", description: "One plant: moisture, trend and its week." },
   { type: "plants-triage-card", name: "Plants: who needs water", description: "Every plant, sorted by need, against its own floor." },
+  { type: "plants-light-card", name: "Plants: light", description: "Daily peak light per plant, one line each." },
+  { type: "plants-battery-card", name: "Plants: battery", description: "Every sensor's charge and when it last reported." },
 ]) {
   if (!window.customCards.some((x) => x.type === c.type)) window.customCards.push({ ...c, preview: true });
 }

@@ -64,12 +64,25 @@ Every plant, sorted by who needs water first, each against its own floor:
 type: custom:plants-triage-card
 ```
 
+Daily peak light for every plant over the last ten days, one line each. Sensors on the same windowsill should trace each other, so a line that wanders off on its own points at the sensor, not the room. When every plant drops at once and stays down, the card marks the day it started; that usually means the plants moved or something now shades them.
+
+```yaml
+type: custom:plants-light-card
+days: 10
+```
+
+Every sensor's battery beside the last time it reported anything. Battery values change rarely, so the last-contact time is the one that tells you a sensor has gone quiet.
+
+```yaml
+type: custom:plants-battery-card
+```
+
 ## For other integrations
 
 Two websocket commands carry everything the cards use:
 
 - `plants/list` returns every plant: readings with their age, band, status, trend, last watered, and the icon.
-- `plants/history` returns hourly mean moisture per plant, seven days by default (`hours` goes up to 744).
+- `plants/history` returns hourly mean moisture per plant, seven days by default (`hours` goes up to 744). `reading` picks another sensor, and `period: day` with `stat: max` and `days` gives daily peaks, which is what the light card uses.
 
 The FireLabs plant display reads plants the same way.
 
